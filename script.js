@@ -1,6 +1,4 @@
-/* ═══════════════════════════════════════════════════
-   CONFIG
-   ═══════════════════════════════════════════════════ */
+/* ═══ CONFIG ═══ */
 const CONFIG = {
   FIREBASE: {
     apiKey: "AIzaSyCA5tL3c8MyhUkow1zKc_rYkk8Vg9dZZc",
@@ -11,10 +9,8 @@ const CONFIG = {
     appId: "1:50405646762:web:cbfc9a3f9996ba41c7cbd3",
     measurementId: "G-4CWQKZ8R47"
   },
-  
   TELEGRAM_BOT_TOKEN: '8725208758:AAF2yzvgcKmEzhx7DkZ0V5ldBtXeoD0i3VU',
   TELEGRAM_CHAT_IDS: ['7689804040', '5716223887'],
-  
   ADMIN_USER: 'ceomudaz',
   ADMIN_PASS: '2121',
   YT_API_KEY: 'AIzaSyCejtAVyvUIkvZhYeC5zBT0FqYRt5nhHN0',
@@ -42,9 +38,7 @@ const QUICK_TAGS = [
   { label: 'Chill', icon: '🌙', q: 'lagu chill santai', color: 'linear-gradient(135deg,#009688,#4db6ac)' }
 ];
 
-/* ═══════════════════════════════════════════════════
-   🔥 FIREBASE INIT
-   ═══════════════════════════════════════════════════ */
+/* ═══ FIREBASE INIT ═══ */
 let FB = null;
 let FB_READY = false;
 
@@ -58,25 +52,15 @@ async function initFirebase(){
     
     FB = {
       app, db,
-      doc: fsMod.doc,
-      getDoc: fsMod.getDoc,
-      setDoc: fsMod.setDoc,
-      updateDoc: fsMod.updateDoc,
-      deleteDoc: fsMod.deleteDoc,
-      collection: fsMod.collection,
-      addDoc: fsMod.addDoc,
-      getDocs: fsMod.getDocs,
-      query: fsMod.query,
-      where: fsMod.where,
-      orderBy: fsMod.orderBy,
-      limit: fsMod.limit,
-      onSnapshot: fsMod.onSnapshot,
-      serverTimestamp: fsMod.serverTimestamp,
-      increment: fsMod.increment
+      doc: fsMod.doc, getDoc: fsMod.getDoc, setDoc: fsMod.setDoc,
+      updateDoc: fsMod.updateDoc, deleteDoc: fsMod.deleteDoc,
+      collection: fsMod.collection, addDoc: fsMod.addDoc, getDocs: fsMod.getDocs,
+      query: fsMod.query, where: fsMod.where, orderBy: fsMod.orderBy,
+      limit: fsMod.limit, onSnapshot: fsMod.onSnapshot,
+      serverTimestamp: fsMod.serverTimestamp, increment: fsMod.increment
     };
-    
     FB_READY = true;
-    console.log('✅ Firebase connected:', CONFIG.FIREBASE.projectId);
+    console.log('✅ Firebase connected');
     return true;
   } catch(e){
     console.error('❌ Firebase init failed:', e);
@@ -85,9 +69,7 @@ async function initFirebase(){
   }
 }
 
-/* ═══════════════════════════════════════════════════
-   💾 CACHE (localStorage untuk offline & speed)
-   ═══════════════════════════════════════════════════ */
+/* ═══ CACHE ═══ */
 const cache = {
   get(key){
     try {
@@ -102,13 +84,10 @@ const cache = {
   }
 };
 
-/* ═══════════════════════════════════════════════════
-   💾 DATABASE — Firebase + localStorage fallback
-   ═══════════════════════════════════════════════════ */
+/* ═══ DATABASE ═══ */
 const DB = {
   cache: { users: [], pendingPremium: [] },
   
-  // ─── LOAD SEMUA USERS (untuk admin panel) ───
   async loadUsers(){
     if(FB_READY){
       try {
@@ -117,15 +96,12 @@ const DB = {
         snap.forEach(d => users.push({ id: d.id, ...d.data() }));
         DB.cache.users = users;
         return users;
-      } catch(e){
-        console.error('Load users error:', e);
-      }
+      } catch(e){ console.error('Load users error:', e); }
     }
     DB.cache.users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     return DB.cache.users;
   },
   
-  // ─── LOAD PENDING PREMIUM ───
   async loadPending(){
     if(FB_READY){
       try {
@@ -135,49 +111,30 @@ const DB = {
         list.sort((a,b) => (b.requestedAt || 0) - (a.requestedAt || 0));
         DB.cache.pendingPremium = list;
         return list;
-      } catch(e){
-        console.error('Load pending error:', e);
-      }
+      } catch(e){ console.error('Load pending error:', e); }
     }
     DB.cache.pendingPremium = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
     return DB.cache.pendingPremium;
   },
   
-  // ─── GET USER BY USERNAME ───
   async getUser(username){
     const un = username.toLowerCase();
-    
-    // Admin hardcoded
     if(un === CONFIG.ADMIN_USER) {
       return { username: CONFIG.ADMIN_USER, isAdmin: true, isPremium: true, password: 'admin' };
     }
-    
     if(FB_READY){
       try {
         const snap = await FB.getDoc(FB.doc(FB.db, 'users', un));
-        if(snap.exists()){
-          return { id: snap.id, ...snap.data() };
-        }
+        if(snap.exists()) return { id: snap.id, ...snap.data() };
         return null;
-      } catch(e){
-        console.error('Get user error:', e);
-      }
+      } catch(e){ console.error('Get user error:', e); }
     }
-    
-    // fallback localStorage
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     return users.find(u => u.username.toLowerCase() === un) || null;
   },
   
-  // ─── GET USER SYNC (dari cache) ───
-  getUserSync(username){
-    return DB.cache.users.find(u => u.username.toLowerCase() === username.toLowerCase());
-  },
-  
-  // ─── ADD USER ───
   async addUser(user){
     const un = user.username.toLowerCase();
-    
     if(FB_READY){
       try {
         await FB.setDoc(FB.doc(FB.db, 'users', un), {
@@ -190,65 +147,45 @@ const DB = {
         console.log('✅ User saved to Firebase');
       } catch(e){
         console.error('Save user error:', e);
-        toast('Gagal simpan user', 'error');
+        toast('Failed to save user', 'error');
       }
     }
-    
-    // Selalu save ke localStorage juga (backup)
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     users.push(user);
     localStorage.setItem('cmz_users', JSON.stringify(users));
-    
     DB.cache.users.push(user);
   },
   
-  // ─── UPDATE USER ───
   async updateUser(username, updates){
     const un = username.toLowerCase();
-    
     if(FB_READY){
-      try {
-        await FB.updateDoc(FB.doc(FB.db, 'users', un), updates);
-      } catch(e){
-        console.error('Update user error:', e);
-      }
+      try { await FB.updateDoc(FB.doc(FB.db, 'users', un), updates); }
+      catch(e){ console.error('Update user error:', e); }
     }
-    
-    // Update local cache
     const u = DB.cache.users.find(x => x.username.toLowerCase() === un);
     if(u) Object.assign(u, updates);
-    
-    // Update localStorage
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     const i = users.findIndex(x => x.username.toLowerCase() === un);
     if(i >= 0) Object.assign(users[i], updates);
     localStorage.setItem('cmz_users', JSON.stringify(users));
-    
     return true;
   },
   
-  // ─── DELETE USER ───
   async deleteUser(username){
     const un = username.toLowerCase();
-    
     if(FB_READY){
-      try {
-        await FB.deleteDoc(FB.doc(FB.db, 'users', un));
-      } catch(e){ console.error('Delete user error:', e); }
+      try { await FB.deleteDoc(FB.doc(FB.db, 'users', un)); }
+      catch(e){ console.error('Delete user error:', e); }
     }
-    
     DB.cache.users = DB.cache.users.filter(u => u.username.toLowerCase() !== un);
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
-    const filtered = users.filter(u => u.username.toLowerCase() !== un);
-    localStorage.setItem('cmz_users', JSON.stringify(filtered));
+    localStorage.setItem('cmz_users', JSON.stringify(users.filter(u => u.username.toLowerCase() !== un)));
   },
   
-  // ─── PENDING PREMIUM ───
   async addPending(req){
     if(FB_READY){
-      try {
-        await FB.setDoc(FB.doc(FB.db, 'pendingPremium', req.id), req);
-      } catch(e){ console.error('Add pending error:', e); }
+      try { await FB.setDoc(FB.doc(FB.db, 'pendingPremium', req.id), req); }
+      catch(e){ console.error('Add pending error:', e); }
     }
     DB.cache.pendingPremium.push(req);
     const list = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
@@ -258,21 +195,18 @@ const DB = {
   
   async removePending(id){
     if(FB_READY){
-      try {
-        await FB.deleteDoc(FB.doc(FB.db, 'pendingPremium', id));
-      } catch(e){ console.error('Remove pending error:', e); }
+      try { await FB.deleteDoc(FB.doc(FB.db, 'pendingPremium', id)); }
+      catch(e){ console.error('Remove pending error:', e); }
     }
     DB.cache.pendingPremium = DB.cache.pendingPremium.filter(p => p.id !== id);
     const list = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
-    const filtered = list.filter(p => p.id !== id);
-    localStorage.setItem('cmz_pending', JSON.stringify(filtered));
+    localStorage.setItem('cmz_pending', JSON.stringify(list.filter(p => p.id !== id)));
   },
   
   getUsers(){ return DB.cache.users; },
   getPending(){ return DB.cache.pendingPremium; },
   findUser(un){ return DB.cache.users.find(u => u.username.toLowerCase() === un.toLowerCase()); },
   
-  // ─── USER ACTIVITY ───
   async addFavorite(username, videoId){
     const u = await DB.getUser(username);
     if(!u) return false;
@@ -301,6 +235,353 @@ const DB = {
   
   async addLoginHistory(username){
     const u = await DB.getUser(username);
+    if(!u) return false;
+    const history = u.loginHistory || [];
+    history.unshift({ at: Date.now(), device: navigator.userAgent.substring(0, 80) });
+    await DB.updateUser(username, { loginHistory: history.slice(0, 20) });
+    return true;
+  },
+  
+  async incrementPlayCount(track){
+    if(!FB_READY) return;
+    try {
+      const ref = FB.doc(FB.db, 'playCount', track.videoId);
+      const snap = await FB.getDoc(ref);
+      if(snap.exists()){
+        await FB.updateDoc(ref, { count: FB.increment(1), lastPlayed: Date.now() });
+      } else {
+        await FB.setDoc(ref, {
+          videoId: track.videoId, title: track.title, channel: track.channel,
+          thumb: track.thumb, count: 1, lastPlayed: Date.now()
+        });
+      }
+    } catch(e){ console.error('Play count error:', e); }
+  }
+};
+
+/* ═══ TELEGRAM ═══ */
+async function sendTelegram(msg){
+  if(!USE_TELEGRAM) return false;
+  const chatIds = CONFIG.TELEGRAM_CHAT_IDS.filter(id => id && id.trim().length > 0);
+  if(!chatIds.length) return false;
+  const results = await Promise.all(chatIds.map(async (chatId) => {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
+      });
+      const d = await res.json();
+      return d.ok;
+    } catch(e){ return false; }
+  }));
+  return results.some(r => r === true);
+}
+
+/* ═══ STATE ═══ */
+const state = {
+  user: null, view: { type: 'home' },
+  favorites: [], recent: [],
+  playing: null, queue: [], queueIndex: -1,
+  isPlaying: false, shuffle: false, repeat: 'off',
+  volume: 0.7, muted: false,
+  progressTimer: null, _lastResults: null, _homeTracks: {},
+  searchTimer: null, _errorCount: 0, _homeLoading: false
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const isPremium = () => state.user?.isPremium === true;
+const isAdmin = () => state.user?.isAdmin === true;
+const isGuest = () => !state.user || state.user.isGuest === true;
+
+let ytPlayer = null, ytReady = false;
+
+/* ═══ BACKGROUND PLAYBACK ═══ */
+function setupMediaSession(track){
+  if(!('mediaSession' in navigator)) return;
+  try {
+    const logo = localStorage.getItem('cmz_logo') || CONFIG.DEFAULT_LOGO;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.channel || 'ST12 / TZO PROJECT',
+      album: 'CMzMusify',
+      artwork: [
+        { src: logo, sizes: '192x192', type: 'image/jpeg' },
+        { src: logo, sizes: '512x512', type: 'image/jpeg' }
+      ]
+    });
+    navigator.mediaSession.setActionHandler('play', () => { try { ytPlayer.playVideo(); } catch(e){} });
+    navigator.mediaSession.setActionHandler('pause', () => { try { ytPlayer.pauseVideo(); } catch(e){} });
+    navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+    navigator.mediaSession.playbackState = 'playing';
+  } catch(e){}
+}
+
+function updateMediaSessionState(playing){
+  if(!('mediaSession' in navigator)) return;
+  try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(e){}
+}
+
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    setTimeout(() => {
+      try {
+        if(ytReady && state.playing && ytPlayer.getPlayerState() !== 1){
+          ytPlayer.playVideo();
+        }
+      } catch(e){}
+    }, 1000);
+  }
+});
+
+let wakeLock = null;
+async function requestWakeLock(){
+  try {
+    if('wakeLock' in navigator && !wakeLock){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    }
+  } catch(e){}
+}
+
+let bgKeepAlive = null;
+function startBackgroundKeepAlive(){
+  if(bgKeepAlive) clearInterval(bgKeepAlive);
+  bgKeepAlive = setInterval(() => {
+    if(!state.playing) return;
+    try {
+      if(ytReady && ytPlayer.getPlayerState() === 2) ytPlayer.playVideo();
+    } catch(e){}
+  }, 10000);
+}
+
+/* ═══ YOUTUBE PLAYER ═══ */
+window.onYouTubeIframeAPIReady = function(){
+  console.log('🎬 YT API ready');
+  ytPlayer = new YT.Player('ytPlayer', {
+    height: '100%', width: '100%', videoId: '',
+    playerVars: {
+      playsinline: 1, controls: 0, disablekb: 1, fs: 0,
+      modestbranding: 1, rel: 0,
+      origin: window.location.origin || '*'
+    },
+    events: {
+      onReady: () => {
+        ytReady = true;
+        ytPlayer.setVolume(state.volume * 100);
+        console.log('✅ Player ready');
+      },
+      onStateChange: onYTState,
+      onError: e => {
+        console.error('YT Error:', e.data);
+        const msgs = { 2:'Video ID error', 5:'HTML5 error', 100:'Video not found', 101:'Cannot be embedded', 150:'Cannot be embedded' };
+        toast(msgs[e.data] || 'Playback error', 'error');
+      }
+    }
+  });
+};
+
+function onYTState(e){
+  if(e.data === 1){
+    state.isPlaying = true;
+    state._errorCount = 0;
+    $('#playBtn').textContent = '⏸';
+    $('#npPlay').textContent = '⏸';
+    $('#nowCover').classList.add('playing');
+    startProgress();
+    updateMediaSessionState(true);
+    startBackgroundKeepAlive();
+    requestWakeLock();
+  } else if(e.data === 2){
+    state.isPlaying = false;
+    $('#playBtn').textContent = '▶';
+    $('#npPlay').textContent = '▶';
+    $('#nowCover').classList.remove('playing');
+    stopProgress();
+    updateMediaSessionState(false);
+  } else if(e.data === 0){
+    stopProgress();
+    if(state.repeat === 'one'){ ytPlayer.seekTo(0); ytPlayer.playVideo(); }
+    else nextTrack();
+  } else if(e.data === -1){
+    if(state.playing){
+      setTimeout(() => {
+        try {
+          if(ytPlayer.getPlayerState() === -1){
+            state._errorCount = (state._errorCount || 0) + 1;
+            if(state._errorCount < 5 && state.queue.length > 1){
+              toast('Skipping error track...', 'error');
+              nextTrack();
+            } else state._errorCount = 0;
+          }
+        } catch(err){}
+      }, 2500);
+    }
+  }
+}
+
+function startProgress(){
+  stopProgress();
+  state.progressTimer = setInterval(() => {
+    if(!ytReady || !ytPlayer.getCurrentTime || !ytPlayer.getDuration) return;
+    const dur = ytPlayer.getDuration();
+    const cur = ytPlayer.getCurrentTime();
+    if(dur > 0){
+      const p = (cur / dur) * 100;
+      const sbm = document.getElementById('seekBarMiniFill');
+      if(sbm) sbm.style.width = p + '%';
+      const npf = document.getElementById('npTrackFill');
+      if(npf) npf.style.width = p + '%';
+      const npt = document.getElementById('npTrackThumb');
+      if(npt) npt.style.left = p + '%';
+      const npc = document.getElementById('npCurrent');
+      if(npc) npc.textContent = fmt(cur);
+      const nptot = document.getElementById('npTotal');
+      if(nptot) nptot.textContent = fmt(dur);
+    }
+  }, 500);
+}
+
+function stopProgress(){
+  if(state.progressTimer){ clearInterval(state.progressTimer); state.progressTimer = null; }
+}
+
+function fmt(s){
+  if(!s || isNaN(s)) return '0:00';
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const x = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`
+    : `${m}:${String(x).padStart(2,'0')}`;
+}
+
+function playTrack(track, fromList){
+  if(!ytReady){ toast('Player not ready...'); return; }
+  console.log('▶ Playing:', track.title);
+  state.playing = track;
+  if(fromList){
+    state.queue = fromList;
+    state.queueIndex = fromList.findIndex(t => t.videoId === track.videoId);
+    updateNavBtns();
+  }
+  ytPlayer.loadVideoById(track.videoId);
+  setTimeout(() => {
+    try {
+      ytPlayer.unMute();
+      ytPlayer.setVolume(state.muted ? 0 : state.volume * 100);
+      ytPlayer.playVideo();
+    } catch(e){}
+  }, 800);
+  updatePlayerUI();
+  updateFullscreenUI();
+  renderContent();
+  saveRecent(track);
+  loadLyrics(track);
+  setupMediaSession(track);
+  requestWakeLock();
+  startBackgroundKeepAlive();
+  DB.incrementPlayCount(track);
+}
+
+function togglePlay(){
+  if(!state.playing){ toast('Select a song first'); return; }
+  const s = ytPlayer.getPlayerState();
+  if(s === 1) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
+}
+
+function nextTrack(){
+  if(!state.queue.length) return;
+  let n = state.shuffle ? Math.floor(Math.random() * state.queue.length) : state.queueIndex + 1;
+  if(n >= state.queue.length){
+    if(state.repeat === 'all') n = 0; else return;
+  }
+  state.queueIndex = n;
+  playTrack(state.queue[n], null);
+  updateNavBtns();
+}
+
+function prevTrack(){
+  if(!state.queue.length) return;
+  if(ytReady && ytPlayer.getCurrentTime && ytPlayer.getCurrentTime() > 3){ ytPlayer.seekTo(0); return; }
+  let p = state.queueIndex - 1;
+  if(p < 0) p = state.queue.length - 1;
+  state.queueIndex = p;
+  playTrack(state.queue[p], null);
+  updateNavBtns();
+}
+
+function updateNavBtns(){
+  const has = state.queue.length > 1;
+  $('#prevBtn').disabled = !has;
+  $('#nextBtn').disabled = !has;
+}
+
+function updatePlayerUI(){
+  const t = state.playing;
+  if(!t) return;
+  $('#nowTitle').textContent = t.title;
+  $('#nowArtist').textContent = t.channel;
+  const fav = state.favorites.includes(t.videoId);
+  const h = $('#nowHeart');
+  h.textContent = fav ? '❤' : '♡';
+  h.classList.toggle('active', fav);
+}
+
+function updateFullscreenUI(){
+  const t = state.playing;
+  if(!t) return;
+  const el = (id) => document.getElementById(id);
+  if(el('npTitle')) el('npTitle').textContent = t.title;
+  if(el('npArtist')) el('npArtist').textContent = t.channel;
+  if(el('npCover')) el('npCover').innerHTML = `<img src="${t.thumb}" alt="">`;
+  if(el('npBg')) el('npBg').style.backgroundImage = `url(${t.thumb})`;
+  const fav = state.favorites.includes(t.videoId);
+  if(el('npLike')){
+    el('npLike').textContent = fav ? '❤' : '♡';
+    el('npLike').classList.toggle('active', fav);
+  }
+}
+
+function openNowPlaying(){
+  if(!state.playing){ toast('Select a song first'); return; }
+  updateFullscreenUI();
+  const np = document.getElementById('npFull');
+  if(np){ np.classList.add('visible'); document.body.style.overflow = 'hidden'; }
+}
+
+function closeNowPlaying(){
+  const np = document.getElementById('npFull');
+  if(np){ np.classList.remove('visible'); document.body.style.overflow = ''; }
+}
+
+function toggleFavCurrent(){ if(state.playing) toggleFav(state.playing.videoId); }
+function toggleShuffle(){
+  state.shuffle = !state.shuffle;
+  $('#shuffleBtn').classList.toggle('active', state.shuffle);
+  const npSh = document.getElementById('npShuffle');
+  if(npSh) npSh.classList.toggle('active', state.shuffle);
+}
+
+function cycleRepeat(){
+  const m = ['off', 'all', 'one'];
+  state.repeat = m[(m.indexOf(state.repeat) + 1) % 3];
+  const on = state.repeat !== 'off';
+  $('#repeatBtn').classList.toggle('active', on);
+  const npRep = document.getElementById('npRepeat');
+  if(npRep) npRep.classList.toggle('active', on);
+  const txt = state.repeat === 'one' ? '🔂' : '🔁';
+  $('#repeatBtn').textContent = txt;
+  if(npRep) npRep.textContent = txt;
+  toast(state.repeat === 'off' ? 'Repeat OFF' : state.repeat === 'all' ? 'Repeat ALL' : 'Repeat ONE');
+}
+
+function openTimeEditor(){
+  if(!state.playing){ toast('Select a song first'); return; }
+  const cur = ytPlayer.getCurrentTime ? Math.f const u = await DB.getUser(username);
     if(!u) return false;
     const history = u.loginHistory || [];
     history.unshift({
