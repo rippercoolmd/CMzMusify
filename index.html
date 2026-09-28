@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CMzMusify — by TZO PROJECT</title>
+<link rel="icon" href="logo.jpg">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00ff41">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="CMzMusify">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="ytHidden"><div id="ytPlayer"></div></div>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <div class="sb-logo has-logo" id="sbLogoBox">
+        <span class="logo-tzo" id="sbLogoText" style="display:none">TZO</span>
+        <img id="sbLogoImg" src="logo.jpg" alt="Logo" onerror="logoError()">
+        <span class="logo-pulse"></span>
+      </div>
+      <div>
+        <h1>TZO PROJECT</h1>
+        <p class="sb-tag">CMzMusify v2.0</p>
+      </div>
+    </div>
+
+    <div class="sb-status">
+      <div class="status-dot"></div>
+      <span>SYSTEM ONLINE</span>
+      <span class="status-blink">_</span>
+    </div>
+
+    <nav class="sb-nav">
+      <div class="sb-nav-item active" data-nav="home"><i>⌂</i><span>Home</span></div>
+      <div class="sb-nav-item" data-nav="search"><i>⌕</i><span>Search</span></div>
+    </nav>
+    <div class="sb-lib">
+      <div class="section-title" style="padding:12px 12px 6px">LIBRARY</div>
+      <div id="sbPlaylists"></div>
+    </div>
+    <div class="sb-footer">
+      <div class="sb-footer-line">root@tzo:~# build --v2.0</div>
+      <div class="sb-footer-line">© 2026 TZO PROJECT</div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="top-bar">
+      <div class="top-search">
+        <input type="text" id="topSearch" placeholder="Search songs, artists...">
+      </div>
+      <div class="top-right" id="topRight"></div>
+    </div>
+    <div class="content" id="content"></div>
+  </main>
+
+  <div class="player" id="miniPlayer">
+    <div class="seek-bar-mini">
+      <div class="seek-bar-mini-fill" id="seekBarMiniFill"></div>
+    </div>
+    <div class="pl-left">
+      <div class="pl-left-click" id="miniPlayerClickArea">
+        <div class="now-cover has-logo" id="nowCover">
+          <img id="nowCoverLogo" src="logo.jpg" alt="Logo" onerror="nowCoverError()">
+          <span id="nowCoverEmoji" style="display:none">🎵</span>
+        </div>
+        <div class="now-info">
+          <div class="now-title" id="nowTitle">Select a song</div>
+          <div class="now-artist" id="nowArtist">TZO PROJECT</div>
+        </div>
+      </div>
+      <button class="now-heart" id="nowHeart">♡</button>
+    </div>
+    <div class="pl-center">
+      <div class="pc-btns">
+        <button class="pc-btn" id="shuffleBtn">🔀</button>
+        <button class="pc-btn" id="prevBtn" disabled>⏮</button>
+        <button class="pc-btn pc-play" id="playBtn">▶</button>
+        <button class="pc-btn" id="nextBtn" disabled>⏭</button>
+        <button class="pc-btn" id="repeatBtn">🔁</button>
+      </div>
+    </div>
+    <div class="pl-right">
+      <button class="pc-btn" id="lyricsBtn">📝</button>
+      <button class="pc-btn" id="volBtn">🔊</button>
+      <div class="vol-track" id="volTrack"><div class="vol-fill" id="volFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<nav class="mobile-nav">
+  <div class="mn-item active" data-nav="home">⌂<span>Home</span></div>
+  <div class="mn-item" data-nav="search">⌕<span>Search</span></div>
+  <div class="mn-item" data-nav="liked">❤<span>Liked</span></div>
+  <div class="mn-item" data-nav="recent">◔<span>Recent</span></div>
+</nav>
+
+<div class="np-full" id="npFull">
+  <div class="np-bg" id="npBg"></div>
+  <div class="np-overlay"></div>
+  <div class="np-scan"></div>
+  <div class="np-content">
+    <div class="np-top">
+      <button class="np-btn-close" onclick="closeNowPlaying()">⌄</button>
+      <div class="np-context">◉ NOW PLAYING</div>
+      <button class="np-btn-menu">⋯</button>
+    </div>
+    <div class="np-cover-wrap">
+      <div class="np-cover" id="npCover"><div class="np-cover-placeholder">🎵</div></div>
+    </div>
+    <div class="np-meta">
+      <div class="np-title-row">
+        <div style="min-width:0;flex:1">
+          <div class="np-title" id="npTitle">—</div>
+          <div class="np-artist" id="npArtist">—</div>
+        </div>
+        <button class="np-like" id="npLike">♡</button>
+      </div>
+      <div class="np-progress">
+        <span id="npCurrent">0:00</span>
+        <div class="np-track" id="npTrack">
+          <div class="np-track-bg">
+            <div class="np-track-fill" id="npTrackFill"></div>
+            <div class="np-track-thumb" id="npTrackThumb"></div>
+          </div>
+        </div>
+        <span id="npTotal">0:00</span>
+      </div>
+      <div class="np-controls">
+        <button class="np-ctrl" id="npShuffle">🔀</button>
+        <button class="np-ctrl" id="npPrev">⏮</button>
+        <button class="np-play" id="npPlay">▶</button>
+        <button class="np-ctrl" id="npNext">⏭</button>
+        <button class="np-ctrl" id="npRepeat">🔁</button>
+      </div>
+      <div class="np-bottom">
+        <button class="np-bottom-btn" id="npLyricsBtn">📝 Lyrics</button>
+        <button class="np-bottom-btn" id="npShareBtn">📤 Share</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="lyrics-panel" id="lyricsPanel">
+  <div class="lyrics-header">
+    <h3>◈ LYRICS</h3>
+    <button id="lyricsClose">✕</button>
+  </div>
+  <div class="lyrics-body" id="lyricsBody">
+    <div class="not-found"><div>🎵</div><div>Select a song to see lyrics</div></div>
+  </div>
+</div>
+
+<div class="time-editor" id="timeEditor">
+  <div class="time-editor-box">
+    <h3>⏱ SET TIME</h3>
+    <div class="time-inputs">
+      <div class="time-input-group"><label>HOUR</label><input type="number" id="inputH" min="0" max="23" value="0"></div>
+      <div class="time-input-group"><label>MIN</label><input type="number" id="inputM" min="0" max="59" value="0"></div>
+      <div class="time-input-group"><label>SEC</label><input type="number" id="inputS" min="0" max="59" value="0"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-cancel" id="timeCancel">CANCEL</button>
+      <button class="btn-go" id="timeGo">JUMP</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="authModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeAuth()">✕</button>
+    <div class="modal-logo"><span class="logo-tzo-big">TZO</span></div>
+    <h2>Access Terminal</h2>
+    <p class="subtitle">root@cmzmusify:~# login_</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Log In</button>
+      <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">Sign Up</button>
+    </div>
+    <div class="error-msg" id="authError"></div>
+    <div id="loginForm">
+      <div class="form-group"><label>USERNAME</label><input type="text" class="form-input" id="loginUser" placeholder="Enter username"></div>
+      <div class="form-group"><label>PASSWORD</label><input type="password" class="form-input" id="loginPass" placeholder="Enter password"></div>
+      <button class="btn-primary" onclick="handleLogin()">▶ LOG IN</button>
+      <button class="btn-secondary" onclick="continueAsGuest()">○ CONTINUE AS GUEST</button>
+    </div>
+    <div id="registerForm" style="display:none">
+      <div class="form-group"><label>USERNAME</label><input type="text" class="form-input" id="regUser" placeholder="Min. 3 chars"></div>
+      <div class="form-group"><label>PASSWORD</label><input type="password" class="form-input" id="regPass" placeholder="Min. 4 chars"></div>
+      <div class="form-group"><label>CONFIRM</label><input type="password" class="form-input" id="regPass2" placeholder="Repeat password"></div>
+      <div class="error-msg" id="authError2"></div>
+      <button class="btn-primary" onclick="handleRegister()">▶ SIGN UP</button>
+      <button class="btn-secondary" onclick="continueAsGuest()">○ CONTINUE AS GUEST</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="premiumModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closePremium()">✕</button>
+    <div class="modal-logo premium-crown">👑</div>
+    <h2 class="gold-gradient">PREMIUM ACCESS</h2>
+    <p class="subtitle">// Unlock full system privileges</p>
+    <div class="plan">
+      <div class="plan-badge">RECOMMENDED</div>
+      <div class="price">Rp 20.000 <small>/ month</small></div>
+      <ul class="plan-feat">
+        <li><i>▶</i> Full lyrics for all songs</li>
+        <li><i>▶</i> Premium badge on profile</li>
+        <li><i>▶</i> Unlimited skips</li>
+        <li><i>▶</i> Ad-free experience</li>
+        <li><i>▶</i> Priority support</li>
+        <li><i>▶</i> 320kbps HQ audio</li>
+      </ul>
+    </div>
+    <div class="payment-methods">
+      <p class="pm-title">// CHOOSE PAYMENT METHOD</p>
+      <div class="pm-options">
+        <button class="pm-btn pm-dana" onclick="showPaymentMethod('dana')">
+          <div class="pm-icon">💳</div>
+          <div class="pm-name">DANA</div>
+          <div class="pm-desc">Transfer to number</div>
+        </button>
+        <button class="pm-btn pm-qris" onclick="showPaymentMethod('qris')">
+          <div class="pm-icon">◫</div>
+          <div class="pm-name">QRIS</div>
+          <div class="pm-desc">Scan QR code</div>
+        </button>
+      </div>
+    </div>
+    <div class="error-msg" id="premiumError"></div>
+    <div class="success-msg" id="premiumSuccess"></div>
+    <button class="btn-primary" onclick="requestPremium()">▶ I'VE PAID — CONFIRM</button>
+  </div>
+</div>
+
+<div class="modal" id="paymentModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closePayment()">✕</button>
+    <div class="modal-logo">💳</div>
+    <h2>DANA Payment</h2>
+    <p class="subtitle">// Transfer to this number</p>
+    <div class="dana-info">
+      <div class="dana-label">DANA NUMBER</div>
+      <div class="dana-number" id="danaNumber">08xxxxxxxxxx</div>
+      <button class="copy-btn" onclick="copyDanaNumber()">COPY</button>
+    </div>
+    <div class="dana-info">
+      <div class="dana-label">ACCOUNT NAME</div>
+      <div class="dana-name">TZO PROJECT</div>
+    </div>
+    <div class="dana-info">
+      <div class="dana-label">AMOUNT</div>
+      <div class="dana-amount">Rp 20.000</div>
+    </div>
+    <p class="dana-note">After transfer, confirm to admin below</p>
+    <button class="btn-gold" onclick="requestPremium()">▶ I'VE PAID — CONFIRM</button>
+    <button class="btn-secondary" onclick="closePayment();openPremium()" style="margin-top:10px">◀ BACK</button>
+  </div>
+</div>
+
+<div class="modal qris-modal" id="qrisModal">
+  <div class="qris-wrapper">
+    <button class="qris-back" onclick="closeQRIS()">◀ BACK</button>
+    <div class="qris-card">
+      <div class="scanner"></div>
+      <div class="qris-top-row">
+        <span>[ SECURE_NODE_01 ]</span><span>[ GPN_ENCRYPTED ]</span>
+      </div>
+      <div class="qris-title">TZO PROJECT</div>
+      <div class="qris-subtitle">NMID : ID21032010<br>NODE : A01</div>
+      <div class="qr-wrap"><img id="qrisImg" src="https://files.catbox.moe/3vzpp4.jpg" alt="QRIS"></div>
+      <div class="terminal">
+        <p>root@tzo:~# Initiate Payment Protocol_</p>
+        <p>One QRIS for all.</p>
+        <p>&gt;&gt; HOW TO PAY:<br>[1] Open DANA App<br>[2] Scan &amp; Check<br>[3] Pay</p>
+      </div>
+      <div class="qris-footer">
+        <p>// Printed by : <span>CEO MUDAz</span> // Status : <span style="color:#00ff41">ACCESS GRANTED</span></p>
+      </div>
+      <button class="btn-gold qris-confirm-btn" onclick="confirmQRISPayment()">▶ I'VE PAID — CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="adminModal">
+  <div class="modal-box wide">
+    <button class="modal-close" onclick="closeAdmin()">✕</button>
+    <h2 style="text-align:left;font-size:18px;display:flex;align-items:center;gap:10px">
+      <span style="color:var(--green)">◈</span> ADMIN TERMINAL
+    </h2>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-atab="pending" onclick="switchAdminTab('pending')">Requests</button>
+      <button class="admin-tab" data-atab="users" onclick="switchAdminTab('users')">Users</button>
+      <button class="admin-tab" data-atab="stats" onclick="switchAdminTab('stats')">Stats</button>
+      <button class="admin-tab" data-atab="settings" onclick="switchAdminTab('settings')">⚙ Settings</button>
+    </div>
+    <div id="adminPending"></div>
+    <div id="adminUsers" style="display:none"></div>
+    <div id="adminStats" style="display:none"></div>
+    <div id="adminSettings" style="display:none">
+      <h3 style="margin-bottom:12px;color:var(--green);font-size:14px">💳 PAYMENT SETTINGS</h3>
+      <div class="form-group"><label>DANA NUMBER</label><input type="text" class="form-input" id="settingDana" placeholder="08xxxxxxxxxx"></div>
+      <button class="btn-primary" onclick="saveDanaNumber()" style="margin-bottom:20px">▶ SAVE DANA NUMBER</button>
+
+      <h3 style="margin-bottom:12px;color:var(--green);font-size:14px">📱 QRIS IMAGE</h3>
+      <p style="color:var(--text-sub);font-size:12px;margin-bottom:14px">Upload QRIS image.</p>
+      <input type="file" id="qrisUpload" accept="image/*" style="display:none" onchange="handleQRISUpload(event)">
+      <button class="btn-primary" onclick="document.getElementById('qrisUpload').click()" style="margin-bottom:12px">▶ UPLOAD QRIS</button>
+      <div id="qrisPreview" style="text-align:center;margin-top:16px"></div>
+      <button class="act-btn danger" onclick="removeQRIS()" style="margin-top:16px;display:none" id="qrisRemoveBtn">✕ REMOVE QRIS</button>
+
+      <h3 style="margin:24px 0 12px;color:var(--green);font-size:14px">🎨 APP LOGO</h3>
+      <p style="color:var(--text-sub);font-size:12px;margin-bottom:14px">
+        Default pakai <code style="color:var(--green)">logo.jpg</code>. Upload untuk override.
+      </p>
+      <input type="file" id="logoUpload" accept="image/*" style="display:none" onchange="handleLogoUpload(event)">
+      <button class="btn-primary" onclick="document.getElementById('logoUpload').click()" style="margin-bottom:12px">▶ UPLOAD LOGO CUSTOM</button>
+      <div id="logoPreview" style="text-align:center;margin-top:16px"></div>
+      <button class="act-btn danger" onclick="removeLogo()" style="margin-top:16px;display:none" id="logoRemoveBtn">✕ RESET KE logo.jpg</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function logoError(){
+  const img = document.getElementById('sbLogoImg');
+  const txt = document.getElementById('sbLogoText');
+  const box = document.getElementById('sbLogoBox');
+  if(img) img.style.display = 'none';
+  if(txt) txt.style.display = 'block';
+  if(box) box.classList.remove('has-logo');
+}
+function nowCoverError(){
+  const img = document.getElementById('nowCoverLogo');
+  const emoji = document.getElementById('nowCoverEmoji');
+  const cover = document.getElementById('nowCover');
+  if(img) img.style.display = 'none';
+  if(emoji) emoji.style.display = 'flex';
+  if(cover) cover.classList.remove('has-logo');
+}
+</script>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="script.js"></script>
+</body>
+</html>
