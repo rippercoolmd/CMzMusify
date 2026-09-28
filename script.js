@@ -581,402 +581,6 @@ function cycleRepeat(){
 
 function openTimeEditor(){
   if(!state.playing){ toast('Select a song first'); return; }
-  const cur = ytPlayer.getCurrentTime ? Math.f const u = await DB.getUser(username);
-    if(!u) return false;
-    const history = u.loginHistory || [];
-    history.unshift({
-      at: Date.now(),
-      device: navigator.userAgent.substring(0, 80)
-    });
-    await DB.updateUser(username, { loginHistory: history.slice(0, 20) });
-    return true;
-  },
-  
-  // ─── PLAY COUNT (global) ───
-  async incrementPlayCount(track){
-    if(FB_READY){
-      try {
-        const ref = FB.doc(FB.db, 'playCount', track.videoId);
-        const snap = await FB.getDoc(ref);
-        if(snap.exists()){
-          await FB.updateDoc(ref, {
-            count: FB.increment(1),
-            lastPlayed: Date.now()
-          });
-        } else {
-          await FB.setDoc(ref, {
-            videoId: track.videoId,
-            title: track.title,
-            channel: track.channel,
-            thumb: track.thumb,
-            count: 1,
-            lastPlayed: Date.now()
-          });
-        }
-      } catch(e){ console.error('Play count error:', e); }
-    }
-  },
-  
-  async getTopPlayed(limitCount = 20){
-    if(!FB_READY) return [];
-    try {
-      const q = FB.query(
-        FB.collection(FB.db, 'playCount'),
-        FB.orderBy('count', 'desc'),
-        FB.limit(limitCount)
-      );
-      const snap = await FB.getDocs(q);
-      const list = [];
-      snap.forEach(d => list.push(d.data()));
-      return list;
-    } catch(e){
-      console.error('Get top played error:', e);
-      return [];
-    }
-  }
-};
-
-/* ═══════════════════════════════════════════════════
-   📨 TELEGRAM
-   ═══════════════════════════════════════════════════ */
-async function sendTelegram(msg){
-  if(!USE_TELEGRAM) return false;
-  const chatIds = CONFIG.TELEGRAM_CHAT_IDS.filter(id => id && id.trim().length > 0);
-  if(!chatIds.length) return false;
-  const results = await Promise.all(chatIds.map(async (chatId) => {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
-      });
-      const d = await res.json();
-      return d.ok;
-    } catch(e){ return false; }
-  }));
-  return results.some(r => r === true);
-}
-
-/* ═══════════════════════════════════════════════════
-   🧠 STATE
-   ═══════════════════════════════════════════════════ */
-const state = {
-  user: null, view: { type: 'home' },
-  favorites: [], recent: [],
-  playing: null, queue: [], queueIndex: -1,
-  isPlaying: false, shuffle: false, repeat: 'off',
-  volume: 0.7, muted: false,
-  progressTimer: null, _lastResults: null, _homeTracks: {},
-  searchTimer: null, _errorCount: 0, _homeLoading: false
-};
-
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
-const isPremium = () => state.user?.isPremium === true;
-const isAdmin = () => state.user?.isAdmin === true;
-const isGuest = () => !state.user || state.user.isGuest === true;
-
-let ytPlayer = null, ytReady = false;
-
-/* ═══ BACKGROUND PLAYBACK ═══ */
-function setupMediaSession(track){
-  if(!('mediaSession' in navigator)) return;
-  try {
-    const logo = localStorage.getItem('cmz_logo') || CONFIG.DEFAULT_LOGO;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: track.title,
-      artist: track.channel || 'ST12 / TZO PROJECT',
-      album: 'CMzMusify',
-      artwork: [
-        { src: logo, sizes: '192x192', type: 'image/jpeg' },
-        { src: logo, sizes: '512x512', type: 'image/jpeg' }
-      ]
-    });
-    navigator.mediaSession.setActionHandler('play', () => { try { ytPlayer.playVideo(); } catch(e){} });
-    navigator.mediaSession.setActionHandler('pause', () => { try { ytPlayer.pauseVideo(); } catch(e){} });
-    navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
-    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
-    navigator.mediaSession.playbackState = 'playing';
-  } catch(e){}
-}
-
-function updateMediaSessionState(playing){
-  if(!('mediaSession' in navigator)) return;
-  try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(e){}
-}
-
-document.addEventListener('visibilitychange', () => {
-  if(document.hidden){
-    setTimeout(() => {
-      try {
-        if(ytReady && state.playing && ytPlayer.getPlayerState() !== 1){
-          ytPlayer.playVideo();
-        }
-      } catch(e){}
-    }, 1000);
-  }
-});
-
-let wakeLock = null;
-async function requestWakeLock(){
-  try {
-    if('wakeLock' in navigator && !wakeLock){
-      wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; });
-    }
-  } catch(e){}
-}
-
-let bgKeepAlive = null;
-function startBackgroundKeepAlive(){
-  if(bgKeepAlive) clearInterval(bgKeepAlive);
-  bgKeepAlive = setInterval(() => {
-    if(!state.playing) return;
-    try {
-      if(ytReady && ytPlayer.getPlayerState() === 2){
-        ytPlayer.playVideo();
-      }
-    } catch(e){}
-  }, 10000);
-}
-
-/* ═══ YOUTUBE PLAYER ═══ */
-window.onYouTubeIframeAPIReady = function(){
-  console.log('🎬 YT API ready');
-  ytPlayer = new YT.Player('ytPlayer', {
-    height: '100%', width: '100%', videoId: '',
-    playerVars: {
-      playsinline: 1, controls: 0, disablekb: 1, fs: 0,
-      modestbranding: 1, rel: 0,
-      origin: window.location.origin || '*'
-    },
-    events: {
-      onReady: () => {
-        ytReady = true;
-        ytPlayer.setVolume(state.volume * 100);
-        console.log('✅ Player ready');
-      },
-      onStateChange: onYTState,
-      onError: e => {
-        console.error('YT Error:', e.data);
-        const msgs = { 2:'Video ID error', 5:'HTML5 error', 100:'Video not found', 101:'Cannot be embedded', 150:'Cannot be embedded' };
-        toast(msgs[e.data] || 'Playback error', 'error');
-      }
-    }
-  });
-};
-
-function onYTState(e){
-  console.log('State:', e.data);
-  if(e.data === 1){
-    state.isPlaying = true;
-    state._errorCount = 0;
-    $('#playBtn').textContent = '⏸';
-    $('#npPlay').textContent = '⏸';
-    $('#nowCover').classList.add('playing');
-    startProgress();
-    updateMediaSessionState(true);
-    startBackgroundKeepAlive();
-    requestWakeLock();
-  } else if(e.data === 2){
-    state.isPlaying = false;
-    $('#playBtn').textContent = '▶';
-    $('#npPlay').textContent = '▶';
-    $('#nowCover').classList.remove('playing');
-    stopProgress();
-    updateMediaSessionState(false);
-  } else if(e.data === 0){
-    stopProgress();
-    if(state.repeat === 'one'){ ytPlayer.seekTo(0); ytPlayer.playVideo(); }
-    else nextTrack();
-  } else if(e.data === -1){
-    if(state.playing){
-      setTimeout(() => {
-        try {
-          if(ytPlayer.getPlayerState() === -1){
-            state._errorCount = (state._errorCount || 0) + 1;
-            if(state._errorCount < 5 && state.queue.length > 1){
-              toast('Skipping error track...', 'error');
-              nextTrack();
-            } else {
-              state._errorCount = 0;
-            }
-          }
-        } catch(err){}
-      }, 2500);
-    }
-  }
-}
-
-function startProgress(){
-  stopProgress();
-  state.progressTimer = setInterval(() => {
-    if(!ytReady || !ytPlayer.getCurrentTime || !ytPlayer.getDuration) return;
-    const dur = ytPlayer.getDuration();
-    const cur = ytPlayer.getCurrentTime();
-    if(dur > 0){
-      const p = (cur / dur) * 100;
-      const sbm = document.getElementById('seekBarMiniFill');
-      if(sbm) sbm.style.width = p + '%';
-      const npf = document.getElementById('npTrackFill');
-      if(npf) npf.style.width = p + '%';
-      const npt = document.getElementById('npTrackThumb');
-      if(npt) npt.style.left = p + '%';
-      const npc = document.getElementById('npCurrent');
-      if(npc) npc.textContent = fmt(cur);
-      const nptot = document.getElementById('npTotal');
-      if(nptot) nptot.textContent = fmt(dur);
-    }
-  }, 500);
-}
-
-function stopProgress(){
-  if(state.progressTimer){ clearInterval(state.progressTimer); state.progressTimer = null; }
-}
-
-function fmt(s){
-  if(!s || isNaN(s)) return '0:00';
-  s = Math.floor(s);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const x = s % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`
-    : `${m}:${String(x).padStart(2,'0')}`;
-}
-
-/* ═══ PLAY TRACK ═══ */
-function playTrack(track, fromList){
-  if(!ytReady){ toast('Player not ready...'); return; }
-  console.log('▶ Playing:', track.title);
-  state.playing = track;
-  if(fromList){
-    state.queue = fromList;
-    state.queueIndex = fromList.findIndex(t => t.videoId === track.videoId);
-    updateNavBtns();
-  }
-  ytPlayer.loadVideoById(track.videoId);
-  setTimeout(() => {
-    try {
-      ytPlayer.unMute();
-      ytPlayer.setVolume(state.muted ? 0 : state.volume * 100);
-      ytPlayer.playVideo();
-    } catch(e){}
-  }, 800);
-  updatePlayerUI();
-  updateFullscreenUI();
-  renderContent();
-  saveRecent(track);
-  loadLyrics(track);
-  setupMediaSession(track);
-  requestWakeLock();
-  startBackgroundKeepAlive();
-  
-  // ✅ Firebase: increment play count
-  DB.incrementPlayCount(track);
-}
-
-function togglePlay(){
-  if(!state.playing){ toast('Select a song first'); return; }
-  const s = ytPlayer.getPlayerState();
-  if(s === 1) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
-}
-
-function nextTrack(){
-  if(!state.queue.length) return;
-  let n = state.shuffle ? Math.floor(Math.random() * state.queue.length) : state.queueIndex + 1;
-  if(n >= state.queue.length){
-    if(state.repeat === 'all') n = 0; else return;
-  }
-  state.queueIndex = n;
-  playTrack(state.queue[n], null);
-  updateNavBtns();
-}
-
-function prevTrack(){
-  if(!state.queue.length) return;
-  if(ytReady && ytPlayer.getCurrentTime && ytPlayer.getCurrentTime() > 3){ ytPlayer.seekTo(0); return; }
-  let p = state.queueIndex - 1;
-  if(p < 0) p = state.queue.length - 1;
-  state.queueIndex = p;
-  playTrack(state.queue[p], null);
-  updateNavBtns();
-}
-
-function updateNavBtns(){
-  const has = state.queue.length > 1;
-  $('#prevBtn').disabled = !has;
-  $('#nextBtn').disabled = !has;
-}
-
-function updatePlayerUI(){
-  const t = state.playing;
-  if(!t) return;
-  $('#nowTitle').textContent = t.title;
-  $('#nowArtist').textContent = t.channel;
-  const fav = state.favorites.includes(t.videoId);
-  const h = $('#nowHeart');
-  h.textContent = fav ? '❤' : '♡';
-  h.classList.toggle('active', fav);
-}
-
-function updateFullscreenUI(){
-  const t = state.playing;
-  if(!t) return;
-  const el = (id) => document.getElementById(id);
-  if(el('npTitle')) el('npTitle').textContent = t.title;
-  if(el('npArtist')) el('npArtist').textContent = t.channel;
-  if(el('npCover')) el('npCover').innerHTML = `<img src="${t.thumb}" alt="">`;
-  if(el('npBg')) el('npBg').style.backgroundImage = `url(${t.thumb})`;
-  const fav = state.favorites.includes(t.videoId);
-  if(el('npLike')){
-    el('npLike').textContent = fav ? '❤' : '♡';
-    el('npLike').classList.toggle('active', fav);
-  }
-}
-
-function openNowPlaying(){
-  if(!state.playing){ toast('Select a song first'); return; }
-  updateFullscreenUI();
-  const np = document.getElementById('npFull');
-  if(np){
-    np.classList.add('visible');
-    document.body.style.overflow = 'hidden';
-  }
-}
-
-function closeNowPlaying(){
-  const np = document.getElementById('npFull');
-  if(np){
-    np.classList.remove('visible');
-    document.body.style.overflow = '';
-  }
-}
-
-function toggleFavCurrent(){ if(state.playing) toggleFav(state.playing.videoId); }
-
-function toggleShuffle(){
-  state.shuffle = !state.shuffle;
-  $('#shuffleBtn').classList.toggle('active', state.shuffle);
-  const npSh = document.getElementById('npShuffle');
-  if(npSh) npSh.classList.toggle('active', state.shuffle);
-}
-
-function cycleRepeat(){
-  const m = ['off', 'all', 'one'];
-  state.repeat = m[(m.indexOf(state.repeat) + 1) % 3];
-  const on = state.repeat !== 'off';
-  $('#repeatBtn').classList.toggle('active', on);
-  const npRep = document.getElementById('npRepeat');
-  if(npRep) npRep.classList.toggle('active', on);
-  const txt = state.repeat === 'one' ? '🔂' : '🔁';
-  $('#repeatBtn').textContent = txt;
-  if(npRep) npRep.textContent = txt;
-  toast(state.repeat === 'off' ? 'Repeat OFF' : state.repeat === 'all' ? 'Repeat ALL' : 'Repeat ONE');
-}
-
-function openTimeEditor(){
-  if(!state.playing){ toast('Select a song first'); return; }
   const cur = ytPlayer.getCurrentTime ? Math.floor(ytPlayer.getCurrentTime()) : 0;
   $('#inputH').value = Math.floor(cur / 3600);
   $('#inputM').value = Math.floor((cur % 3600) / 60);
@@ -996,7 +600,6 @@ function applyTimeEditor(){
   toast(`⏱ Jumped to ${fmt(total)}`);
 }
 
-/* ═══ SEARCH ═══ */
 async function ytSearch(q, useCache = true){
   const cacheKey = 'q_' + q.toLowerCase().trim();
   if(useCache){
@@ -1137,7 +740,6 @@ function renderContent(){
   });
 }
 
-/* ═══ FAVORITES & RECENT (Firebase sync) ═══ */
 async function toggleFav(vid){
   const i = state.favorites.indexOf(vid);
   if(i >= 0){
@@ -1164,7 +766,6 @@ async function saveRecent(t){
 function ukey(k){ return `cmz_${state.user?.username || 'guest'}_${k}`; }
 
 function loadUserData(){
-  // Try Firebase user data first
   if(state.user && state.user.favorites !== undefined){
     state.favorites = state.user.favorites || [];
     state.recent = state.user.recent || [];
@@ -1179,14 +780,12 @@ function saveUserData(){
   localStorage.setItem(ukey('recent'), JSON.stringify(state.recent));
 }
 
-/* ═══ LYRICS ═══ */
 function canAccessLyrics(){ return isPremium() || isAdmin(); }
 
 async function loadLyrics(t){
   const body = $('#lyricsBody');
   if(!body) return;
   body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-
   if(!canAccessLyrics()){
     body.innerHTML = `<div class="not-found">
       <div style="font-size:48px;margin-bottom:16px">🔒</div>
@@ -1200,10 +799,8 @@ async function loadLyrics(t){
     </div>`;
     return;
   }
-
   let title = t.title.replace(/\(official.*?\)/gi, '').replace(/\[.*?\]/g, '').replace(/ft\.?\s.*/gi, '').replace(/feat\.?\s.*/gi, '').replace(/\|.*/g, '').replace(/-\s*topic/gi, '').trim();
   let artist = t.channel.replace(/VEVO/gi, '').replace(/official/gi, '').replace(/-\s*topic/gi, '').trim();
-
   try {
     const r = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`);
     if(r.ok){
@@ -1219,7 +816,6 @@ function toggleLyrics(){
   if(p) p.classList.toggle('visible');
 }
 
-/* ═══ PREMIUM ═══ */
 function openPremium(){
   if(isPremium()){ toast('Already Premium 👑', 'gold'); return; }
   if(!state.user || state.user.isGuest){ toast('Please log in', 'error'); return; }
@@ -1261,9 +857,7 @@ function closeQRIS(){
 
 function copyDanaNumber(){
   const num = document.getElementById('danaNumber')?.textContent || '';
-  navigator.clipboard.writeText(num).then(() => {
-    toast('📋 DANA number copied!');
-  }).catch(() => toast('Copy failed', 'error'));
+  navigator.clipboard.writeText(num).then(() => toast('📋 DANA number copied!')).catch(() => toast('Copy failed', 'error'));
 }
 
 function saveDanaNumber(){
@@ -1276,18 +870,15 @@ function saveDanaNumber(){
 async function requestPremium(){
   if(!state.user || state.user.isGuest){ toast('Please log in', 'error'); return; }
   if(isPremium()){ toast('Already Premium 👑', 'gold'); return; }
-
   const err = $('#premiumError'), suc = $('#premiumSuccess');
   if(err) err.classList.remove('visible');
   if(suc) suc.classList.remove('visible');
-
   const pending = await DB.loadPending();
   if(pending.some(p => p.username === state.user.username)){
     if(err){ err.textContent = 'You already have a pending request'; err.classList.add('visible'); }
     toast('Pending request already exists', 'error');
     return;
   }
-
   const req = {
     id: 'req_' + Date.now(),
     username: state.user.username,
@@ -1297,20 +888,14 @@ async function requestPremium(){
     status: 'pending'
   };
   await DB.addPending(req);
-
   const tgMsg = `👑 <b>NEW PREMIUM REQUEST</b>
 
 👤 Username: <code>${state.user.username}</code>
 📦 Package: Premium 1 Month
 💰 Price: Rp 20.000
 🆔 ID: <code>${req.id}</code>
-📅 Time: ${new Date().toLocaleString('en-US')}
-
-━━━━━━━━━━━━━━━━━━━━
-✅ Login admin → Avatar → Admin Panel → Approve`;
-
+📅 Time: ${new Date().toLocaleString('en-US')}`;
   const sent = await sendTelegram(tgMsg);
-
   if(sent || !USE_TELEGRAM){
     if(suc){ suc.textContent = '✅ Confirmation sent! Admin will verify.'; suc.classList.add('visible'); }
     toast('Confirmation sent 📨', 'gold');
@@ -1323,7 +908,6 @@ async function requestPremium(){
 
 function confirmQRISPayment(){ requestPremium(); }
 
-/* ═══ QRIS MANAGEMENT ═══ */
 function handleQRISUpload(e){
   const file = e.target.files[0];
   if(!file) return;
@@ -1358,7 +942,6 @@ function renderQRISPreview(){
   }
 }
 
-/* ═══ LOGO MANAGEMENT ═══ */
 function handleLogoUpload(e){
   const file = e.target.files[0];
   if(!file) return;
@@ -1385,18 +968,15 @@ function removeLogo(){
 function applyLogo(){
   const uploadedLogo = localStorage.getItem('cmz_logo');
   const logo = uploadedLogo || CONFIG.DEFAULT_LOGO;
-  
   const img = document.getElementById('nowCoverLogo');
   const emoji = document.getElementById('nowCoverEmoji');
   const cover = document.getElementById('nowCover');
   const sbImg = document.getElementById('sbLogoImg');
   const sbLogo = document.getElementById('sbLogoBox');
   const sbText = document.getElementById('sbLogoText');
-
   if(logo){
     if(img){
-      img.src = logo;
-      img.style.display = 'block';
+      img.src = logo; img.style.display = 'block';
       img.onerror = () => {
         img.style.display = 'none';
         if(emoji) emoji.style.display = 'flex';
@@ -1420,18 +1000,15 @@ function renderLogoPreview(){
   const el = document.getElementById('logoPreview');
   const btn = document.getElementById('logoRemoveBtn');
   if(!el) return;
-  
   el.innerHTML = `<div style="background:#1a1a1a;padding:12px;border-radius:12px;display:inline-block;border:1px solid var(--green)">
     <img src="${logo}" style="max-width:120px;max-height:120px;display:block;border-radius:8px">
   </div>
   <p style="color:var(--sub);font-size:12px;margin-top:12px">
     ${uploadedLogo ? '✅ Custom logo active' : '📁 Using default <code style="color:var(--green)">logo.jpg</code>'}
   </p>`;
-  
   if(btn) btn.style.display = uploadedLogo ? 'inline-block' : 'none';
 }
 
-/* ═══ AUTH (Firebase) ═══ */
 function hash(p){ return btoa(p + '_cmz'); }
 
 function switchAuthTab(t){
@@ -1452,32 +1029,18 @@ async function handleRegister(){
   if(un.toLowerCase() === CONFIG.ADMIN_USER) return showErr('Username not available', 'authError2');
   if(pw.length < 4) return showErr('Password min. 4', 'authError2');
   if(pw !== pw2) return showErr('Confirm password does not match', 'authError2');
-  
   const existing = await DB.getUser(un);
   if(existing) return showErr('Username already taken', 'authError2');
-
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = 'Signing up...';
-
   const u = {
-    username: un,
-    password: hash(pw),
-    isPremium: false,
-    isAdmin: false,
-    createdAt: Date.now(),
-    premiumSince: null,
-    favorites: [],
-    recent: [],
-    loginHistory: [{
-      at: Date.now(),
-      device: navigator.userAgent.substring(0, 80)
-    }]
+    username: un, password: hash(pw), isPremium: false, isAdmin: false,
+    createdAt: Date.now(), premiumSince: null, favorites: [], recent: [],
+    loginHistory: [{ at: Date.now(), device: navigator.userAgent.substring(0, 80) }]
   };
-  
   await DB.addUser(u);
-  await sendTelegram(`🎉 <b>NEW USER SIGNUP</b>\n\n👤 Username: <code>${un}</code>\n📅 ${new Date().toLocaleString('en-US')}\n👥 Total: ${DB.cache.users.length}`);
-  
+  await sendTelegram(`🎉 <b>NEW USER SIGNUP</b>\n\n👤 <code>${un}</code>\n📅 ${new Date().toLocaleString('en-US')}\n👥 Total: ${DB.cache.users.length}`);
   setSession(u);
   toast(`Welcome, ${un}! 🎉`);
   closeAuth();
@@ -1489,21 +1052,17 @@ async function handleLogin(){
   const pw = $('#loginPass').value;
   $('#authError').classList.remove('visible');
   if(!un || !pw) return showErr('Enter username & password');
-
   if(un === CONFIG.ADMIN_USER && pw === CONFIG.ADMIN_PASS){
     setSession({ username: CONFIG.ADMIN_USER, isAdmin: true, isPremium: true });
     toast('Logged in as Admin 👑', 'gold');
     closeAuth(); refreshAll(); return;
   }
-
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = 'Logging in...';
-
   const u = await DB.getUser(un);
   if(!u){ btn.disabled = false; btn.textContent = 'Log In'; return showErr('Username not found'); }
   if(u.password !== hash(pw)){ btn.disabled = false; btn.textContent = 'Log In'; return showErr('Wrong password'); }
-
   setSession(u);
   DB.addLoginHistory(u.username);
   toast(`Welcome back, ${u.username}! 🎵`);
@@ -1555,25 +1114,19 @@ function closeAuth(){
   if(m) m.classList.remove('visible');
 }
 
-/* ═══ ADMIN ═══ */
 async function openAdmin(){
   if(!isAdmin()){ toast('Access denied', 'error'); return; }
   const m = document.getElementById('adminModal');
   if(m) m.classList.add('visible');
-  
-  // Loading state
   $('#adminPending').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   $('#adminUsers').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-  
   await DB.loadUsers();
   await DB.loadPending();
-  
   renderAdminPending();
   renderAdminUsers();
   renderAdminStats();
   renderQRISPreview();
   renderLogoPreview();
-  
   const dana = localStorage.getItem('cmz_dana') || '';
   const el = document.getElementById('settingDana');
   if(el) el.value = dana;
@@ -1715,7 +1268,6 @@ async function adminDelete(un){
   renderAdminUsers(); renderAdminStats(); renderAdminPending();
 }
 
-/* ═══ RENDER ═══ */
 function refreshAll(){
   renderTopRight();
   renderSidebar();
@@ -1809,14 +1361,12 @@ async function renderHome(){
   const h = new Date().getHours();
   const greet = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   const name = state.user && !state.user.isGuest ? `, <span class="accent">${state.user.username}</span>` : '';
-
   const quickHTML = QUICK_TAGS.map(t => `
     <div class="quick-item" data-q="${t.q}">
       <div class="quick-icon" style="background:${t.color}">${t.icon}</div>
       <div class="quick-label">${t.label}</div>
     </div>
   `).join('');
-
   c.innerHTML = `
     <div class="greet">${greet}${name} 👋<div class="greet-sub">Search & play music — just like Spotify</div></div>
     <div class="quick-grid">${quickHTML}</div>
@@ -1824,7 +1374,6 @@ async function renderHome(){
       ${HOME_SECTIONS.slice(0, 4).map(skeletonRow).join('')}
     </div>
   `;
-
   if(state._homeLoading) return;
   state._homeLoading = true;
   try {
@@ -1892,7 +1441,6 @@ function renderRecent(){
   c.innerHTML = `<div class="section-title">🕐 Recently Played (${state.recent.length})</div>${state.recent.map(songHTML).join('')}`;
 }
 
-/* ═══ EVENT LISTENERS ═══ */
 document.getElementById('playBtn').addEventListener('click', togglePlay);
 document.getElementById('nextBtn').addEventListener('click', nextTrack);
 document.getElementById('prevBtn').addEventListener('click', prevTrack);
@@ -1919,11 +1467,8 @@ document.getElementById('npLyricsBtn').addEventListener('click', () => {
 document.getElementById('npShareBtn').addEventListener('click', () => {
   if(!state.playing) return;
   const txt = `🎵 Listening to "${state.playing.title}" by ${state.playing.channel} on CMzMusify`;
-  if(navigator.share){
-    navigator.share({ title: state.playing.title, text: txt }).catch(()=>{});
-  } else {
-    navigator.clipboard.writeText(txt).then(()=> toast('📋 Copied to clipboard')).catch(()=>{});
-  }
+  if(navigator.share) navigator.share({ title: state.playing.title, text: txt }).catch(()=>{});
+  else navigator.clipboard.writeText(txt).then(()=> toast('📋 Copied')).catch(()=>{});
 });
 
 const sbmEl = document.querySelector('.seek-bar-mini');
@@ -2005,30 +1550,18 @@ function toast(msg, type){
 
 /* ═══ INIT ═══ */
 async function init(){
-  // Init Firebase dulu
   await initFirebase();
-  
-  // Load users kalau admin
   const s = await loadSession();
   if(s){ state.user = s; loadUserData(); }
-  
   refreshAll();
   setVolume(state.volume);
   renderHome();
   applyLogo();
-  
   if(!state.user) setTimeout(() => openAuth(), 600);
-  
-  // Register Service Worker
   if('serviceWorker' in navigator){
-    try {
-      await navigator.serviceWorker.register('/sw.js');
-      console.log('✅ Service Worker registered');
-    } catch(e){
-      console.warn('⚠️ SW failed:', e.message);
-    }
+    try { await navigator.serviceWorker.register('/sw.js'); console.log('✅ SW registered'); }
+    catch(e){ console.warn('SW failed:', e.message); }
   }
-  
   console.log('%c🎵 CMzMusify — TZO PROJECT', 'color:#00ff41;font-size:18px;font-weight:900');
   console.log('%c🔥 Firebase: ' + (FB_READY ? 'CONNECTED' : 'OFFLINE'), FB_READY ? 'color:#00d93a;font-size:12px' : 'color:#ff4b4b;font-size:12px');
   console.log('%cAdmin: ceomudaz / 2121', 'color:#ffd700;font-size:11px');
