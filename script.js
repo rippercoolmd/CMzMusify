@@ -38,15 +38,17 @@ const QUICK_TAGS = [
   { label: 'Chill', icon: '🌙', q: 'lagu chill santai', color: 'linear-gradient(135deg,#009688,#4db6ac)' }
 ];
 
-/* ═══ FIREBASE INIT ═══ */
+/* ═══ FIREBASE — DEFENSIVE INIT ═══ */
 let FB = null;
 let FB_READY = false;
 
 async function initFirebase(){
   try {
+    console.log('🔥 [1/2] Loading Firebase SDK...');
     const appMod = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
     const fsMod = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
     
+    console.log('🔥 [2/2] Initializing Firebase...');
     const app = appMod.initializeApp(CONFIG.FIREBASE);
     const db = fsMod.getFirestore(app);
     
@@ -59,12 +61,20 @@ async function initFirebase(){
       limit: fsMod.limit, onSnapshot: fsMod.onSnapshot,
       serverTimestamp: fsMod.serverTimestamp, increment: fsMod.increment
     };
+    
+    // Test write permission
+    console.log('🔥 Testing Firestore write permission...');
+    const testRef = FB.doc(FB.db, '_test', 'init');
+    await FB.setDoc(testRef, { ok: true, at: Date.now() });
+    console.log('✅ Firebase WRITE OK');
+    
     FB_READY = true;
     console.log('✅ Firebase connected');
     return true;
   } catch(e){
-    console.error('❌ Firebase init failed:', e);
+    console.error('❌ Firebase init failed:', e.message);
     FB_READY = false;
+    console.warn('⚠️ Will use localStorage only (offline mode)');
     return false;
   }
 }
@@ -84,20 +94,33 @@ const cache = {
   }
 };
 
-/* ═══ DATABASE ═══ */
+/* ═══ DATABASE — Firebase + localStorage fallback ═══ */
 const DB = {
   cache: { users: [], pendingPremium: [] },
   
+  // Helper: save to localStorage (SELALU dipanggil, jadi fallback aman)
+  _saveLocal(){
+    localStorage.setItem('cmz_users', JSON.stringify(DB.cache.users));
+    localStorage.setItem('cmz_pending', JSON.stringify(DB.cache.pendingPremium));
+  },
+  
   async loadUsers(){
+    // 1. Coba Firebase
     if(FB_READY){
       try {
         const snap = await FB.getDocs(FB.collection(FB.db, 'users'));
         const users = [];
         snap.forEach(d => users.push({ id: d.id, ...d.data() }));
-        DB.cache.users = users;
-        return users;
-      } catch(e){ console.error('Load users error:', e); }
+        if(users.length > 0){
+          DB.cache.users = users;
+          this._saveLocal();
+          return users;
+        }
+      } catch(e){
+        console.warn('Firebase loadUsers failed:', e.message);
+      }
     }
+    // 2. Fallback localStorage
     DB.cache.users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     return DB.cache.users;
   },
@@ -111,7 +134,9 @@ const DB = {
         list.sort((a,b) => (b.requestedAt || 0) - (a.requestedAt || 0));
         DB.cache.pendingPremium = list;
         return list;
-      } catch(e){ console.error('Load pending error:', e); }
+      } catch(e){
+        console.warn('Firebase loadPending failed:', e.message);
+      }
     }
     DB.cache.pendingPremium = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
     return DB.cache.pendingPremium;
@@ -119,88 +144,120 @@ const DB = {
   
   async getUser(username){
     const un = username.toLowerCase();
+    
     if(un === CONFIG.ADMIN_USER) {
       return { username: CONFIG.ADMIN_USER, isAdmin: true, isPremium: true, password: 'admin' };
     }
+    
+    // 1. Coba Firebase
     if(FB_READY){
       try {
         const snap = await FB.getDoc(FB.doc(FB.db, 'users', un));
         if(snap.exists()) return { id: snap.id, ...snap.data() };
-        return null;
-      } catch(e){ console.error('Get user error:', e); }
+      } catch(e){
+        console.warn('Firebase getUser failed:', e.message);
+      }
     }
+    
+    // 2. Fallback localStorage
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     return users.find(u => u.username.toLowerCase() === un) || null;
   },
   
   async addUser(user){
     const un = user.username.toLowerCase();
+    const newUser = {
+      ...user,
+      createdAt: user.createdAt || Date.now(),
+      favorites: [],
+      recent: [],
+      loginHistory: []
+    };
+    
+    // 1. SELALU save ke localStorage dulu (biar signup PASTI berhasil)
+    const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
+    if(!users.find(u => u.username.toLowerCase() === un)){
+      users.push(newUser);
+      localStorage.setItem('cmz_users', JSON.stringify(users));
+    }
+    if(!DB.cache.users.find(u => u.username.toLowerCase() === un)){
+      DB.cache.users.push(newUser);
+    }
+    
+    // 2. Coba sync ke Firebase (kalau gagal, tidak blocking)
     if(FB_READY){
       try {
-        await FB.setDoc(FB.doc(FB.db, 'users', un), {
-          ...user,
-          createdAt: user.createdAt || Date.now(),
-          favorites: [],
-          recent: [],
-          loginHistory: []
-        });
-        console.log('✅ User saved to Firebase');
+        await FB.setDoc(FB.doc(FB.db, 'users', un), newUser);
+        console.log('✅ User synced to Firebase:', un);
       } catch(e){
-        console.error('Save user error:', e);
-        toast('Failed to save user', 'error');
+        console.warn('⚠️ Firebase sync failed (user saved locally):', e.message);
       }
     }
-    const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
-    users.push(user);
-    localStorage.setItem('cmz_users', JSON.stringify(users));
-    DB.cache.users.push(user);
+    
+    return true;
   },
   
   async updateUser(username, updates){
     const un = username.toLowerCase();
-    if(FB_READY){
-      try { await FB.updateDoc(FB.doc(FB.db, 'users', un), updates); }
-      catch(e){ console.error('Update user error:', e); }
-    }
-    const u = DB.cache.users.find(x => x.username.toLowerCase() === un);
-    if(u) Object.assign(u, updates);
+    
+    // 1. Update localStorage
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     const i = users.findIndex(x => x.username.toLowerCase() === un);
     if(i >= 0) Object.assign(users[i], updates);
     localStorage.setItem('cmz_users', JSON.stringify(users));
+    
+    // 2. Update cache
+    const u = DB.cache.users.find(x => x.username.toLowerCase() === un);
+    if(u) Object.assign(u, updates);
+    
+    // 3. Coba Firebase
+    if(FB_READY){
+      try {
+        await FB.updateDoc(FB.doc(FB.db, 'users', un), updates);
+      } catch(e){
+        console.warn('Firebase update failed:', e.message);
+      }
+    }
+    
     return true;
   },
   
   async deleteUser(username){
     const un = username.toLowerCase();
-    if(FB_READY){
-      try { await FB.deleteDoc(FB.doc(FB.db, 'users', un)); }
-      catch(e){ console.error('Delete user error:', e); }
-    }
+    
     DB.cache.users = DB.cache.users.filter(u => u.username.toLowerCase() !== un);
     const users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
     localStorage.setItem('cmz_users', JSON.stringify(users.filter(u => u.username.toLowerCase() !== un)));
+    
+    if(FB_READY){
+      try { await FB.deleteDoc(FB.doc(FB.db, 'users', un)); }
+      catch(e){ console.warn('Firebase delete failed:', e.message); }
+    }
   },
   
   async addPending(req){
-    if(FB_READY){
-      try { await FB.setDoc(FB.doc(FB.db, 'pendingPremium', req.id), req); }
-      catch(e){ console.error('Add pending error:', e); }
-    }
+    // 1. Local
     DB.cache.pendingPremium.push(req);
     const list = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
     list.push(req);
     localStorage.setItem('cmz_pending', JSON.stringify(list));
+    
+    // 2. Firebase
+    if(FB_READY){
+      try { await FB.setDoc(FB.doc(FB.db, 'pendingPremium', req.id), req); }
+      catch(e){ console.warn('Firebase pending failed:', e.message); }
+    }
   },
   
   async removePending(id){
-    if(FB_READY){
-      try { await FB.deleteDoc(FB.doc(FB.db, 'pendingPremium', id)); }
-      catch(e){ console.error('Remove pending error:', e); }
-    }
     DB.cache.pendingPremium = DB.cache.pendingPremium.filter(p => p.id !== id);
     const list = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
     localStorage.setItem('cmz_pending', JSON.stringify(list.filter(p => p.id !== id)));
+    
+    if(FB_READY){
+      try { await FB.deleteDoc(FB.doc(FB.db, 'pendingPremium', id)); }
+      catch(e){ console.warn('Firebase remove pending failed:', e.message); }
+    }
   },
   
   getUsers(){ return DB.cache.users; },
@@ -255,7 +312,7 @@ const DB = {
           thumb: track.thumb, count: 1, lastPlayed: Date.now()
         });
       }
-    } catch(e){ console.error('Play count error:', e); }
+    } catch(e){}
   }
 };
 
@@ -264,18 +321,19 @@ async function sendTelegram(msg){
   if(!USE_TELEGRAM) return false;
   const chatIds = CONFIG.TELEGRAM_CHAT_IDS.filter(id => id && id.trim().length > 0);
   if(!chatIds.length) return false;
-  const results = await Promise.all(chatIds.map(async (chatId) => {
-    try {
-      const res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
-      });
-      const d = await res.json();
-      return d.ok;
-    } catch(e){ return false; }
-  }));
-  return results.some(r => r === true);
+  try {
+    const results = await Promise.all(chatIds.map(async (chatId) => {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'HTML' })
+        });
+        return (await res.json()).ok;
+      } catch(e){ return false; }
+    }));
+    return results.some(r => r === true);
+  } catch(e){ return false; }
 }
 
 /* ═══ STATE ═══ */
@@ -297,14 +355,14 @@ const isGuest = () => !state.user || state.user.isGuest === true;
 
 let ytPlayer = null, ytReady = false;
 
-/* ═══ BACKGROUND PLAYBACK ═══ */
+/* ═══ MEDIA SESSION ═══ */
 function setupMediaSession(track){
   if(!('mediaSession' in navigator)) return;
   try {
     const logo = localStorage.getItem('cmz_logo') || CONFIG.DEFAULT_LOGO;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
-      artist: track.channel || 'ST12 / TZO PROJECT',
+      artist: track.channel || 'TZO PROJECT',
       album: 'CMzMusify',
       artwork: [
         { src: logo, sizes: '192x192', type: 'image/jpeg' },
@@ -559,6 +617,7 @@ function closeNowPlaying(){
 }
 
 function toggleFavCurrent(){ if(state.playing) toggleFav(state.playing.videoId); }
+
 function toggleShuffle(){
   state.shuffle = !state.shuffle;
   $('#shuffleBtn').classList.toggle('active', state.shuffle);
@@ -1020,53 +1079,88 @@ function switchAuthTab(t){
 }
 
 async function handleRegister(){
+  console.log('📝 [SIGNUP] Start registration...');
   const un = $('#regUser').value.trim();
   const pw = $('#regPass').value;
   const pw2 = $('#regPass2').value;
   $('#authError2').classList.remove('visible');
+  
   if(!un || un.length < 3) return showErr('Username min. 3', 'authError2');
   if(!/^[a-zA-Z0-9_]+$/.test(un)) return showErr('Username only letters/numbers/_', 'authError2');
   if(un.toLowerCase() === CONFIG.ADMIN_USER) return showErr('Username not available', 'authError2');
   if(pw.length < 4) return showErr('Password min. 4', 'authError2');
   if(pw !== pw2) return showErr('Confirm password does not match', 'authError2');
+  
   const existing = await DB.getUser(un);
   if(existing) return showErr('Username already taken', 'authError2');
+  
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = 'Signing up...';
+  
   const u = {
-    username: un, password: hash(pw), isPremium: false, isAdmin: false,
-    createdAt: Date.now(), premiumSince: null, favorites: [], recent: [],
+    username: un,
+    password: hash(pw),
+    isPremium: false,
+    isAdmin: false,
+    createdAt: Date.now(),
+    premiumSince: null,
+    favorites: [],
+    recent: [],
     loginHistory: [{ at: Date.now(), device: navigator.userAgent.substring(0, 80) }]
   };
-  await DB.addUser(u);
-  await sendTelegram(`🎉 <b>NEW USER SIGNUP</b>\n\n👤 <code>${un}</code>\n📅 ${new Date().toLocaleString('en-US')}\n👥 Total: ${DB.cache.users.length}`);
-  setSession(u);
-  toast(`Welcome, ${un}! 🎉`);
-  closeAuth();
-  refreshAll();
+  
+  try {
+    await DB.addUser(u);
+    console.log('✅ [SIGNUP] User saved successfully:', un);
+    
+    // Send telegram (non-blocking)
+    sendTelegram(`🎉 <b>NEW USER SIGNUP</b>\n\n👤 <code>${un}</code>\n📅 ${new Date().toLocaleString('en-US')}`).catch(() => {});
+    
+    setSession(u);
+    toast(`Welcome, ${un}! 🎉`);
+    closeAuth();
+    refreshAll();
+  } catch(e) {
+    console.error('❌ [SIGNUP] Error:', e);
+    btn.disabled = false;
+    btn.textContent = '▶ SIGN UP';
+    showErr('Registration failed: ' + e.message, 'authError2');
+  }
 }
 
 async function handleLogin(){
+  console.log('🔐 [LOGIN] Start login...');
   const un = $('#loginUser').value.trim();
   const pw = $('#loginPass').value;
   $('#authError').classList.remove('visible');
   if(!un || !pw) return showErr('Enter username & password');
+  
   if(un === CONFIG.ADMIN_USER && pw === CONFIG.ADMIN_PASS){
     setSession({ username: CONFIG.ADMIN_USER, isAdmin: true, isPremium: true });
     toast('Logged in as Admin 👑', 'gold');
     closeAuth(); refreshAll(); return;
   }
+  
   const btn = event.target;
   btn.disabled = true;
   btn.textContent = 'Logging in...';
-  const u = await DB.getUser(un);
-  if(!u){ btn.disabled = false; btn.textContent = 'Log In'; return showErr('Username not found'); }
-  if(u.password !== hash(pw)){ btn.disabled = false; btn.textContent = 'Log In'; return showErr('Wrong password'); }
-  setSession(u);
-  DB.addLoginHistory(u.username);
-  toast(`Welcome back, ${u.username}! 🎵`);
-  closeAuth(); refreshAll();
+  
+  try {
+    const u = await DB.getUser(un);
+    if(!u){ btn.disabled = false; btn.textContent = '▶ LOG IN'; return showErr('Username not found'); }
+    if(u.password !== hash(pw)){ btn.disabled = false; btn.textContent = '▶ LOG IN'; return showErr('Wrong password'); }
+    
+    setSession(u);
+    DB.addLoginHistory(u.username).catch(() => {});
+    toast(`Welcome back, ${u.username}! 🎵`);
+    closeAuth(); refreshAll();
+  } catch(e) {
+    console.error('❌ [LOGIN] Error:', e);
+    btn.disabled = false;
+    btn.textContent = '▶ LOG IN';
+    showErr('Login failed: ' + e.message);
+  }
 }
 
 function setSession(u){
@@ -1178,7 +1272,7 @@ async function approvePremium(id){
   await DB.updateUser(req.username, { isPremium: true, premiumSince: Date.now() });
   await DB.removePending(id);
   toast(`${req.username} → Premium 👑`, 'gold');
-  await sendTelegram(`✅ <b>Premium Approved</b>\n\n👤 <code>${req.username}</code>`);
+  sendTelegram(`✅ <b>Premium Approved</b>\n\n👤 <code>${req.username}</code>`).catch(() => {});
   renderAdminPending(); renderAdminUsers(); renderAdminStats();
 }
 
@@ -1188,7 +1282,7 @@ async function rejectPremium(id){
   if(!confirm(`Reject request from "${req.username}"?`)) return;
   await DB.removePending(id);
   toast('Rejected');
-  await sendTelegram(`❌ <b>Premium Rejected</b>\n\n👤 <code>${req.username}</code>`);
+  sendTelegram(`❌ <b>Premium Rejected</b>\n\n👤 <code>${req.username}</code>`).catch(() => {});
   renderAdminPending();
 }
 
@@ -1550,20 +1644,37 @@ function toast(msg, type){
 
 /* ═══ INIT ═══ */
 async function init(){
+  console.log('🚀 [INIT] Starting CMzMusify...');
+  
+  // Load localStorage users first (for fast access)
+  DB.cache.users = JSON.parse(localStorage.getItem('cmz_users') || '[]');
+  DB.cache.pendingPremium = JSON.parse(localStorage.getItem('cmz_pending') || '[]');
+  console.log('📦 [INIT] Local users loaded:', DB.cache.users.length);
+  
+  // Init Firebase (non-blocking)
   await initFirebase();
+  
+  // Load session
   const s = await loadSession();
   if(s){ state.user = s; loadUserData(); }
+  
   refreshAll();
   setVolume(state.volume);
   renderHome();
   applyLogo();
+  
   if(!state.user) setTimeout(() => openAuth(), 600);
+  
+  // Register SW
   if('serviceWorker' in navigator){
     try { await navigator.serviceWorker.register('/sw.js'); console.log('✅ SW registered'); }
     catch(e){ console.warn('SW failed:', e.message); }
   }
+  
   console.log('%c🎵 CMzMusify — TZO PROJECT', 'color:#00ff41;font-size:18px;font-weight:900');
-  console.log('%c🔥 Firebase: ' + (FB_READY ? 'CONNECTED' : 'OFFLINE'), FB_READY ? 'color:#00d93a;font-size:12px' : 'color:#ff4b4b;font-size:12px');
+  console.log('%c🔥 Firebase: ' + (FB_READY ? 'CONNECTED ✅' : 'OFFLINE ⚠️ (using localStorage)'), 
+    FB_READY ? 'color:#00d93a;font-size:12px;font-weight:700' : 'color:#ff8c00;font-size:12px;font-weight:700');
+  console.log('%c👤 Users in storage: ' + DB.cache.users.length, 'color:#00d4ff;font-size:11px');
   console.log('%cAdmin: ceomudaz / 2121', 'color:#ffd700;font-size:11px');
 }
 
