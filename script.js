@@ -8,7 +8,7 @@ console.log('🔵 script.js starting to load...');
 /* ═══ CONFIG ═══ */
 const CONFIG = {
   FIREBASE: {
-    apiKey: "AIzaSyCA5tL3c8MyhUkow1zKc_rYkk8Vg9dZZc",
+    apiKey: "AIzaSyCCnPjDvEogSrUnodIXxA4hTSJShCeeGXI",
     authDomain: "cmzmusify-f22f3.firebaseapp.com",
     projectId: "cmzmusify-f22f3",
     storageBucket: "cmzmusify-f22f3.firebasestorage.app",
