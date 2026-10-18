@@ -1,0 +1,13 @@
+{
+  "adsEnabled": true,
+  "adsForPremium": false,
+  "qrisUrl": "https://files.catbox.moe/3y03tt.jpg",
+  "qrisUrl2": "https://files.catbox.moe/3y03tt.jpg",
+  "danaNumber": "083175870175",
+  "waNumber": "6283121353855",
+  "telegram": {
+    "token": "8725208758:AAF2yzvgcKmEzhx7DkZ0V5ldBtXeoD0i3VU",
+    "devChatId": "7689804040",
+    "botUsername": "CMzMusifyBot"
+  }
+}

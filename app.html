@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMzMusify v2 — App</title>
+<link rel="icon" href="./logo.jpg"><link rel="manifest" href="./manifest.json"><meta name="theme-color" content="#A855F7">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+<div class="brand"><div class="logo"><img src="./logo.jpg"></div><div><h1>TZO PROJECT</h1><p>v2 3 PAKET</p></div></div>
+<div class="status" id="userStatus">● GUEST</div>
+<nav class="nav">
+<div class="nav-item active">⌂ Home</div>
+<div class="nav-item" id="premiumNav">◆ Premium</div>
+<div class="nav-item" id="devNav" style="display:none">⚙ Developer</div>
+<a href="./index.html" class="nav-item">◀ Landing</a>
+</nav>
+<div id="adSidebar"></div>
+</aside>
+<main class="main">
+<div class="top"><input id="searchInput" placeholder="Cari lagu Spotify (sesi potret)..."><button id="loginBtn">LOGIN</button><div id="userBox" style="display:none"></div></div>
+<div id="adTop" class="ad-top" style="display:none"></div>
+<div id="content"></div>
+</main>
+<div class="player"><div class="seek"><div id="seekFill"></div></div><div class="p-left"><div class="p-cover" id="pCover"><img src="./logo.jpg"></div><div><div id="pTitle">Pilih lagu</div><div id="pArtist">BG Play Ready</div></div></div><div class="p-center"><button id="prevBtn">⏮</button><button id="playBtn" class="play">▶</button><button id="nextBtn">⏭</button></div><div class="p-right"><span id="badge">FREE</span></div></div>
+</div>
+<div id="adInter" class="ad-inter" style="display:none"></div>
+
+<div id="authModal" class="modal"><div class="box"><button class="x" onclick="closeM('authModal')">✕</button><h2>LOGIN</h2><div class="tabs"><button class="tab active" onclick="switchTab('login')">LOGIN</button><button class="tab" onclick="switchTab('reg')">DAFTAR</button></div><div id="loginF"><input id="loginUser" placeholder="username"><input id="loginPass" type="password" placeholder="password"><button class="btn" onclick="doLogin()">MASUK</button><button class="btn sec" onclick="doGuest()">GUEST</button></div><div id="regF" style="display:none"><input id="regUser" placeholder="username"><input id="regPass" type="password" placeholder="pass"><input id="regPass2" type="password" placeholder="ulang"><button class="btn" onclick="doRegister()">DAFTAR</button></div></div></div>
+
+<div id="premiumModal" class="modal"><div class="box wide"><button class="x" onclick="closeM('premiumModal')">✕</button>
+<h2>◆ PILIH PAKET</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0">
+<div class="paket-card" id="paketMinggu" onclick="selectPaket('minggu')"><div class="paket-title">1 MINGGU</div><div class="paket-price">5K</div><div class="paket-desc">7 hari</div><div class="paket-check">○</div></div>
+<div class="paket-card active" id="paketBulan" onclick="selectPaket('bulan')"><div class="paket-title">1 BULAN</div><div class="paket-price">15K</div><div class="paket-desc">30 hari</div><div class="paket-badge">POPULER</div><div class="paket-check">●</div></div>
+<div class="paket-card" id="paketTahun" onclick="selectPaket('tahun')"><div class="paket-title">1 TAHUN</div><div class="paket-price">100K</div><div class="paket-desc">365 hari</div><div class="paket-check">○</div></div>
+</div>
+<div class="qris-wrap"><div class="qris-card"><h4>QRIS</h4><img id="qrisImg" style="display:none"><div id="qrisPlaceholder" class="qris-ph">Belum set</div></div><div class="qris-card"><h4>DANA</h4><img id="danaImg" style="display:none"><div id="danaPlaceholder" class="qris-ph">Belum set</div><div id="danaNumber" style="margin-top:6px;font-weight:800;color:var(--p)"></div></div></div>
+<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px">
+<h4 style="font-size:12px;font-weight:800;margin-bottom:8px">📤 UPLOAD BUKTI TF WAJIB</h4>
+<div style="display:flex;gap:6px"><input id="proofName" placeholder="Nama pengirim" style="flex:1"><select id="paketSelect" style="width:130px"><option value="bulan">1 Bulan 15K</option><option value="minggu">1 Minggu 5K</option><option value="tahun">1 Tahun 100K</option></select></div>
+<input type="file" id="proofFile" accept="image/*" style="margin-top:8px">
+<div id="proofPreview" style="display:none;margin-top:8px"><img id="proofImg" style="width:100%;max-width:200px;border-radius:10px"></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px"><button class="btn" id="btnKirimBukti" onclick="buyPremium()">📤 KIRIM BUKTI KE TELEGRAM DEV</button><button class="btn sec" onclick="openWA()">💬 BELUM DI ACC? CHAT WA</button><div id="premiumStatus" style="font-size:11px;color:var(--sub);text-align:center"></div></div>
+</div></div>
+
+<div id="devModal" class="modal"><div class="box wide"><button class="x" onclick="closeM('devModal')">✕</button><h2>⚙ DEV</h2><div class="tabs"><button class="tab active" onclick="devTab('qris')">QRIS</button><button class="tab" onclick="devTab('ads')">IKLAN</button><button class="tab" onclick="devTab('users')">USERS</button><button class="tab" onclick="devTab('tg')">TG</button></div><div id="devQris"><input id="cfgQrisUrl" placeholder="URL QRIS"><input id="cfgDanaUrl" placeholder="URL DANA"><input id="cfgDanaNum" placeholder="No DANA"><input id="cfgWaNum" placeholder="No WA 628xxx"><button class="btn" onclick="saveQris()">SIMPAN QRIS</button></div><div id="devAds" style="display:none"><input id="adTitle" placeholder="Judul"><input id="adImg" placeholder="URL gambar"><input id="adLink" placeholder="Link"><select id="adType"><option value="banner">Banner</option><option value="sidebar">Sidebar</option><option value="inter">Inter</option></select><textarea id="adCode" placeholder="AdSense HTML"></textarea><button class="btn" onclick="addAd()">+ ADD IKLAN</button><div id="adList"></div></div><div id="devUsers" style="display:none"><div id="userList"></div><div id="pendingList"></div></div><div id="devTg" style="display:none"><input id="cfgTgToken" placeholder="Bot Token"><input id="cfgTgChat" placeholder="Chat ID"><input id="cfgTgUser" placeholder="Username Bot"><button class="btn" onclick="saveTg()">SIMPAN TG</button><button class="btn sec" onclick="testTg()">TEST BOT</button></div></div></div>
+
+<div id="toast" class="toast"></div><audio id="audio"></audio>
+<script type="module" src="./script.js"></script>
+<script>document.getElementById('proofFile')?.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{document.getElementById('proofImg').src=ev.target.result;document.getElementById('proofPreview').style.display='block';};r.readAsDataURL(f);});</script>
+</body>
+</html>
